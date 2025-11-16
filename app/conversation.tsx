@@ -17,6 +17,11 @@ import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
 import * as Speech from "expo-speech";
 
+// Hide the native/stack header
+export const screenOptions = {
+  headerShown: false,
+};
+
 interface ConversationMessage {
   id: number;
   text: string;
