@@ -14,6 +14,11 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Send, Award, MessageCircle } from "lucide-react-native";
 
+// Hide the native/stack header
+export const screenOptions = {
+  headerShown: false,
+};
+
 const topics = [
   { id: "1", name: "Greetings", icon: "👋" },
   { id: "2", name: "Food & Dining", icon: "🍽️" },
