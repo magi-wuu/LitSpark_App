@@ -48,82 +48,6 @@ export default function ProfileScreen() {
 
   const levelProgress = getLevelProgress();
 
-  // All possible achievements with detailed info
-  const allAchievements = [
-    {
-      id: "first_steps",
-      title: "First Steps",
-      description: "Complete your first speaking session",
-      icon: "🎯",
-      category: "Getting Started",
-      unlocked: progress.achievements.includes('level_1') || progress.totalMinutesSpoken > 0,
-      unlockedDate: progress.totalMinutesSpoken > 0 ? "2024-01-15" : null
-    },
-    {
-      id: "10_minutes",
-      title: "Chatterbox",
-      description: "Speak for 10 minutes total",
-      icon: "🔊",
-      category: "Speaking Time",
-      unlocked: progress.achievements.includes('10_minutes'),
-      unlockedDate: progress.achievements.includes('10_minutes') ? "2024-01-16" : null
-    },
-    {
-      id: "1_hour",
-      title: "Conversationalist",
-      description: "Reach 1 hour of total speaking time",
-      icon: "⏰",
-      category: "Speaking Time",
-      unlocked: progress.achievements.includes('1_hour'),
-      unlockedDate: progress.achievements.includes('1_hour') ? "2024-01-20" : null
-    },
-    {
-      id: "5_hours",
-      title: "Speaking Master",
-      description: "Achieve 5 hours of speaking practice",
-      icon: "🔥",
-      category: "Speaking Time",
-      unlocked: progress.achievements.includes('5_hours'),
-      unlockedDate: progress.achievements.includes('5_hours') ? "2024-02-01" : null
-    },
-    {
-      id: "level_3",
-      title: "Rising Star",
-      description: "Reach Level 3",
-      icon: "🏆",
-      category: "Levels",
-      unlocked: progress.achievements.includes('level_3'),
-      unlockedDate: progress.achievements.includes('level_3') ? "2024-01-25" : null
-    },
-    {
-      id: "level_5",
-      title: "Language Explorer",
-      description: "Reach Level 5",
-      icon: "🌟",
-      category: "Levels",
-      unlocked: progress.currentLevel >= 5,
-      unlockedDate: progress.currentLevel >= 5 ? "2024-02-10" : null
-    },
-    {
-      id: "perfect_score",
-      title: "Perfect Performance",
-      description: "Get a perfect score in a conversation",
-      icon: "💯",
-      category: "Performance",
-      unlocked: progress.averageScore >= 95,
-      unlockedDate: progress.averageScore >= 95 ? "2024-01-22" : null
-    },
-    {
-      id: "consistent_learner",
-      title: "Consistent Learner",
-      description: "Practice for 7 days in a row",
-      icon: "📅",
-      category: "Consistency",
-      unlocked: progress.streak >= 7,
-      unlockedDate: progress.streak >= 7 ? "2024-01-28" : null
-    }
-  ];
-
   const handleBackPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
@@ -226,9 +150,6 @@ export default function ProfileScreen() {
     });
   };
 
-  const unlockedAchievements = allAchievements.filter(a => a.unlocked);
-  const lockedAchievements = allAchievements.filter(a => !a.unlocked);
-
   return (
     <SafeAreaView className="flex-1 bg-[#f0f8ff]">
       <StatusBar style="dark" />
@@ -260,25 +181,9 @@ export default function ProfileScreen() {
         {/* Profile Header */}
         <View className="bg-white mx-4 mt-4 rounded-3xl p-6 shadow-sm">
           <View className="items-center">
-            {/* Profile Picture */}
-            <View className="relative">
-              <View className="w-24 h-24 rounded-full overflow-hidden bg-[#FFD700]">
-                <Image
-                  source={profile.profilePicture}
-                  className="w-full h-full"
-                  contentFit="cover"
-                />
-              </View>
-              {isEditing && (
-                <TouchableOpacity
-                  onPress={handleChangeProfilePicture}
-                  className="absolute -bottom-2 -right-2 bg-[#000080] rounded-full p-2"
-                >
-                  <Camera size={16} color="white" />
-                </TouchableOpacity>
-              )}
-            </View>
-
+            <Text className="text-3xl font-bold text-[#000080] mb-1">
+              Hi there!
+            </Text>
             {/* Name and Email */}
             <View className="items-center mt-4 w-full">
               {isEditing ? (
@@ -288,13 +193,6 @@ export default function ProfileScreen() {
                     onChangeText={(text) => updateProfile({ name: text })}
                     className="text-xl font-bold text-[#000080] text-center border-b border-gray-300 pb-1 mb-3"
                     placeholder="Your name"
-                  />
-                  <TextInput
-                    value={profile.email}
-                    onChangeText={(text) => updateProfile({ email: text })}
-                    className="text-gray-600 text-center border-b border-gray-300 pb-1 mb-3"
-                    placeholder="Your email"
-                    keyboardType="email-address"
                   />
                   <TextInput
                     value={profile.bio}
@@ -316,10 +214,6 @@ export default function ProfileScreen() {
                   <Text className="text-xl font-bold text-[#000080] mb-1">
                     {profile.name}
                   </Text>
-                  <View className="flex-row items-center mb-2">
-                    <Mail size={16} color="#666" />
-                    <Text className="text-gray-600 ml-2">{profile.email}</Text>
-                  </View>
                   <Text className="text-gray-600 text-center italic">
                     "{profile.bio}"
                   </Text>
@@ -388,81 +282,9 @@ export default function ProfileScreen() {
               />
             </View>
             <Text className="text-gray-600 text-sm mt-2">
-              {Math.max(0, levelProgress.minutesForNext)} minutes to Level {levelProgress.currentLevel + 1}
+                {Math.round(Math.max(0, levelProgress.minutesForNext))} minutes to go Level {levelProgress.currentLevel + 1}
             </Text>
           </View>
-        </View>
-
-        {/* Achievements Library */}
-        <View className="bg-white mx-4 mt-4 rounded-3xl p-6 shadow-sm mb-6">
-          <View className="flex-row items-center justify-between mb-4">
-            <View className="flex-row items-center">
-              <Award size={24} color="#FFD700" />
-              <Text className="text-lg font-bold text-[#000080] ml-2">
-                Achievements
-              </Text>
-            </View>
-            <View className="bg-[#FFD700] rounded-full px-3 py-1">
-              <Text className="font-bold text-[#000080]">
-                {unlockedAchievements.length}/{allAchievements.length}
-              </Text>
-            </View>
-          </View>
-
-          {/* Unlocked Achievements */}
-          {unlockedAchievements.length > 0 && (
-            <View className="mb-6">
-              <Text className="font-bold text-[#000080] mb-3">Unlocked</Text>
-              {unlockedAchievements.map((achievement) => (
-                <View
-                  key={achievement.id}
-                  className="flex-row items-center bg-[#FFD700] rounded-2xl p-4 mb-3"
-                >
-                  <Text className="text-3xl mr-4">{achievement.icon}</Text>
-                  <View className="flex-1">
-                    <Text className="font-bold text-[#000080]">
-                      {achievement.title}
-                    </Text>
-                    <Text className="text-[#000080] text-sm mb-1">
-                      {achievement.description}
-                    </Text>
-                    <Text className="text-[#000080] text-xs opacity-70">
-                      Unlocked {achievement.unlockedDate ? formatDate(achievement.unlockedDate) : 'Recently'}
-                    </Text>
-                  </View>
-                  <View className="bg-[#000080] rounded-full p-2">
-                    <Trophy size={16} color="#FFD700" />
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* Locked Achievements */}
-          {lockedAchievements.length > 0 && (
-            <View>
-              <Text className="font-bold text-gray-600 mb-3">Coming Up</Text>
-              {lockedAchievements.map((achievement) => (
-                <View
-                  key={achievement.id}
-                  className="flex-row items-center bg-gray-100 rounded-2xl p-4 mb-3"
-                >
-                  <Text className="text-3xl mr-4 opacity-50">{achievement.icon}</Text>
-                  <View className="flex-1">
-                    <Text className="font-bold text-gray-600">
-                      {achievement.title}
-                    </Text>
-                    <Text className="text-gray-500 text-sm">
-                      {achievement.description}
-                    </Text>
-                  </View>
-                  <View className="bg-gray-300 rounded-full p-2">
-                    <Target size={16} color="#666" />
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
         </View>
       </ScrollView>
     </SafeAreaView>

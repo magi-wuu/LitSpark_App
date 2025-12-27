@@ -9,7 +9,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.test-tempo",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs access to your microphone so you can practice speaking English with our AI tutor."
+      } 
     },
     "android": {
       "adaptiveIcon": {

@@ -124,10 +124,30 @@ export const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const addExperience = (points: number) => {
-    setProgress(prev => ({
-      ...prev,
-      experiencePoints: prev.experiencePoints + points
-    }));
+    setProgress(prev => {
+      const newXP = prev.experiencePoints + points;
+      const newAchievements = [...prev.achievements];
+
+      // XP-based achievements
+      if (newXP >= 100 && !newAchievements.includes('xp_100')) {
+        newAchievements.push('xp_100');
+      }
+      if (newXP >= 500 && !newAchievements.includes('xp_500')) {
+        newAchievements.push('xp_500');
+      }
+      if (newXP >= 1000 && !newAchievements.includes('xp_1000')) {
+        newAchievements.push('xp_1000');
+      }
+      if (newXP >= 2500 && !newAchievements.includes('xp_2500')) {
+        newAchievements.push('xp_2500');
+      }
+
+      return {
+        ...prev,
+        experiencePoints: newXP,
+        achievements: newAchievements,
+      };
+    });
   };
 
   const updateScore = (score: number) => {

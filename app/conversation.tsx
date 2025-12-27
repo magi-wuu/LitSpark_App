@@ -6,16 +6,18 @@ import {
   ScrollView,
   Pressable,
   Alert,
+  StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useProgress } from "../contexts/ProgressContext";
-import { Mic, Play, ArrowLeft, Sparkles, Square, X } from "lucide-react-native";
+import { Mic, Play, ArrowLeft, Square } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { Audio } from "expo-av";
-import * as Speech from "expo-speech";
+import * as FileSystem from "expo-file-system";
+import avatar from "../assets/images/LS.png";
 
 interface ConversationMessage {
   id: number;
@@ -33,7 +35,7 @@ interface FeedbackResponse {
 export default function ConversationScreen() {
   const router = useRouter();
   const { addSpeakingTime, updateScore, getLevelProgress } = useProgress();
-  
+
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -42,360 +44,439 @@ export default function ConversationScreen() {
   const [lastFeedback, setLastFeedback] = useState<FeedbackResponse | null>(null);
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
   const [sessionSpeakingTime, setSessionSpeakingTime] = useState(0);
-  
+  const [lastRecordingUri, setLastRecordingUri] = useState<string | null>(null);
+  const [conversationMode, setConversationMode] = useState<'practice' | 'chat'>('practice');
+  const [isThinking, setIsThinking] = useState(false);
+  const [isTTSLoading, setIsTTSLoading] = useState(false);
+
+
   const recording = useRef<Audio.Recording | null>(null);
   const sound = useRef<Audio.Sound | null>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const API_BASE = "https://lsapp-backend.vercel.app";
 
-  // Simulated conversation data
   const [conversation, setConversation] = useState<ConversationMessage[]>([
-    { 
-      id: 1, 
-      text: "Hello! How are you today?", 
-      isUser: false, 
-      timestamp: new Date() 
-    },
+    { id: 1, text: "Hello! How are you today?", isUser: false, timestamp: new Date() },
   ]);
 
-  const handleBackPress = () => {
-    // Save session progress before leaving
-    if (sessionSpeakingTime > 0) {
-      addSpeakingTime(sessionSpeakingTime / 60); // Convert seconds to minutes
+  // Auto-scroll when a new message arrives
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated: true });
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.back();
-  };
+  }, [conversation]);
+
+  const stopAndUnloadSound = async () => {
+    if (!sound.current) return;
+    if (sound.current) {
+      try {
+        await sound.current.stopAsync();
+        await sound.current.unloadAsync();
+      } catch (e) {
+        // ignore — happens if already unloaded
+      }finally {sound.current = null;}
+      }
+    };
+
+    const handleBackPress = () => {
+      if (sessionSpeakingTime > 0) {
+        addSpeakingTime(sessionSpeakingTime / 60);
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      router.back();
+    };
 
   const startRecording = async () => {
     try {
-      console.log('Requesting permissions..');
       await Audio.requestPermissionsAsync();
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
 
-      console.log('Starting recording..');
       const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
       recording.current = newRecording;
       setIsRecording(true);
       setRecordingStartTime(new Date());
-      console.log('Recording started');
     } catch (err) {
-      console.error('Failed to start recording', err);
-      Alert.alert('Error', 'Failed to start recording. Please check microphone permissions.');
+      console.error("Failed to start recording", err);
+      Alert.alert("Error", "Failed to start recording. Please check microphone permissions.");
     }
   };
 
   const stopRecording = async () => {
-    console.log('Stopping recording..');
     if (!recording.current || !recordingStartTime) return;
 
-    // Calculate speaking time for this recording
     const recordingEndTime = new Date();
-    const speakingDuration = (recordingEndTime.getTime() - recordingStartTime.getTime()) / 1000; // in seconds
-    setSessionSpeakingTime(prev => prev + speakingDuration);
+    const speakingDuration =
+      (recordingEndTime.getTime() - recordingStartTime.getTime()) / 1000;
 
+    setSessionSpeakingTime((prev) => prev + speakingDuration);
     setIsRecording(false);
     setIsTranscribing(true);
     setRecordingStartTime(null);
-    
+
     try {
-      await recording.current.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-      });
-      
+      // Get URI before unloading
       const uri = recording.current.getURI();
-      console.log('Recording stopped and stored at', uri);
+      await recording.current.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+
+      setLastRecordingUri(uri); // Save URI for playback
+      recording.current = null;
+
+      console.log("Recording stopped:", uri);
       console.log(`Speaking duration: ${speakingDuration.toFixed(1)} seconds`);
-      
-      // Simulate transcription process
+
+      // Transcribe audio
       await transcribeAudio(uri);
-      
     } catch (error) {
-      console.error('Error stopping recording:', error);
+      console.error("Error stopping recording:", error);
       setIsTranscribing(false);
     }
-    
-    recording.current = null;
   };
 
   const transcribeAudio = async (audioUri: string | null) => {
+    if (!audioUri) return;
+    setIsTranscribing(true);
+
     try {
-      // Simulate API call to speech-to-text service
-      // In a real app, you would send the audio file to a service like:
-      // - Google Speech-to-Text
-      // - Azure Speech Services
-      // - AWS Transcribe
-      // - OpenAI Whisper API
+      const audioBlob = await fetch(audioUri).then(res => res.blob());
+      const response = await fetch(`${API_BASE}/api/transcribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "audio/m4a", // match backend expectation
+        },
+        body: audioBlob,
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text);
+      } 
       
-      console.log('Transcribing audio...');
-      
-      // Simulate transcription delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock transcription result
-      const mockTranscriptions = [
-        "I'm doing well, thank you for asking!",
-        "I love learning new languages.",
-        "Can you help me practice pronunciation?",
-        "What's the weather like today?",
-        "I enjoy reading books in my free time."
-      ];
-      
-      const transcribedText = mockTranscriptions[Math.floor(Math.random() * mockTranscriptions.length)];
+      const data = await response.json();
+
+      const transcribedText = data.text;
       setCurrentTranscription(transcribedText);
-      
-      // Add user message to conversation
+
       const userMessage: ConversationMessage = {
         id: conversation.length + 1,
         text: transcribedText,
         isUser: true,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      
-      setConversation(prev => [...prev, userMessage]);
-      setIsTranscribing(false);
-      
-      // Send to AI for feedback and response
+
+      setConversation((prev) => [...prev, userMessage]);
+
       await generateAIResponse(transcribedText);
-      
     } catch (error) {
-      console.error('Transcription error:', error);
+      console.error("Transcription error:", error);
+      Alert.alert("Error", "Failed to transcribe audio. Please try again.");
+    } finally {
       setIsTranscribing(false);
-      Alert.alert('Error', 'Failed to transcribe audio. Please try again.');
     }
   };
 
   const generateAIResponse = async (userText: string) => {
+    if (!userText || !userText.trim()) return;
+
+    setIsThinking(true);
+
     try {
-      console.log('Generating AI response for:', userText);
-      
-      // Simulate API call to ChatGPT or similar service
-      // In a real app, you would make an API call like:
-      /*
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
+      const response = await fetch(`${API_BASE}/api/chat`, {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${API_KEY}`,
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a language learning assistant. Provide feedback on pronunciation and grammar, then respond naturally to continue the conversation.'
-            },
-            {
-              role: 'user',
-              content: userText
-            }
-          ]
-        })
+          userText,
+          conversationMode,
+        }),
       });
-      */
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Mock AI response with scoring
-      const mockResponses: (FeedbackResponse & { score: number })[] = [
-        {
-          feedback: "Great job! Your pronunciation is clear and natural.",
-          response: "That's wonderful to hear! What would you like to talk about next?",
-          improvements: ["Try to emphasize the 'th' sound more clearly"],
-          score: 85
-        },
-        {
-          feedback: "Good effort! Your grammar is improving.",
-          response: "I'm glad you're enjoying language learning. What's your favorite book genre?",
-          improvements: ["Work on verb tenses", "Practice linking words smoothly"],
-          score: 78
-        },
-        {
-          feedback: "Excellent pronunciation! Keep up the good work.",
-          response: "Of course! Let's practice some common phrases. Repeat after me.",
-          improvements: [],
-          score: 92
-        }
-      ];
-      
-      const aiResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
-      setLastFeedback(aiResponse);
-      
-      // Update user score
-      updateScore(aiResponse.score);
-      
-      // Add AI response to conversation
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text);
+      }
+      const data = await response.json();
+      const aiText = data.aiText;
+
+      if (!aiText) {
+        Alert.alert("Error", "AI returned an empty response.");
+        return;
+      }
+
       const aiMessage: ConversationMessage = {
-        id: conversation.length + 2,
-        text: aiResponse.response,
+        id: Date.now(),
+        text: aiText.trim(),
         isUser: false,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      
-      setConversation(prev => [...prev, aiMessage]);
+
+      await addAIMessage(aiText.trim());
+      setLastFeedback({
+        feedback: "AI response",
+        response: aiText.trim(),
+      });
       setHasResponse(true);
-      
-    } catch (error) {
-      console.error('AI response error:', error);
-      Alert.alert('Error', 'Failed to get AI response. Please try again.');
+
+    } catch (err) {
+      console.error("Groq AI error:", err);
+      Alert.alert("Error", "Failed to get AI response.");
+    } finally {
+      setIsThinking(false);
     }
   };
 
-  const toggleRecording = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    if (isRecording) {
-      await stopRecording();
-    } else {
-      await startRecording();
-    }
-  };
+  const addAIMessage = async (text: string) => {
+    if (isTTSLoading || isSpeaking) {return} // prevent overlapping TTS
+    const newMessage = { id: Date.now(), text, isUser: false, timestamp: new Date() };
+    setConversation((prev) => [...prev, newMessage]);
 
-  const playResponse = async () => {
-    if (isSpeaking) {
-      Speech.stop();
+    setIsTTSLoading(true);
+
+    // Play TTS immediately
+    try {
+      //make sure to stop any prev audio
+      await stopAndUnloadSound();
+
+      console.log("Requesting TTS for text:", text);
+      const response = await fetch(`${API_BASE}/api/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+      const data = await response.json();
+      if (!data.audio) {
+          throw new Error("No audio data received from TTS API");
+        }
+      const {audio} = data;
+      const fileUri = `${FileSystem.cacheDirectory}tts.mp3`;
+      // `audio` is a base64-encoded string from the server; write it directly
+      await FileSystem.writeAsStringAsync(fileUri, audio, { encoding: FileSystem.EncodingType.Base64 });
+
+      //load sound
+      const {sound: newSound, status} = await Audio.Sound.createAsync({ uri: fileUri }, { shouldPlay: false });
+      sound.current = newSound;
+      setIsTTSLoading(false);
+      setIsSpeaking(true);
+
+      // track playback lifecycle
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (!status.isLoaded) {
+          // Update your UI for the unloaded state
+          return;
+        }
+        if (status.didJustFinish) {
+          setIsSpeaking(false);
+          stopAndUnloadSound();
+        }
+      });
+
+      // play sound only after its loaded
+      await newSound.playAsync();
+    } catch (err:any) {
+      console.error("TTS playback error:", err);
+      Alert.alert("Audio Error", `LitSpark couldn't speak right now! Please try again.`);
+      setIsTTSLoading(false);
       setIsSpeaking(false);
+    }
+  };
+
+
+    const toggleRecording = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (isRecording) await stopRecording();
+    else await startRecording();
+  };
+
+  const playUserRecording = async () => {
+    if (!lastRecordingUri) {
+      Alert.alert("No recording available");
       return;
     }
-
-    if (!lastFeedback) return;
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsSpeaking(true);
-    
     try {
-      // Configure speech options
-      const speechOptions = {
-        language: 'en-US',
-        pitch: 1.0,
-        rate: 0.8,
-        voice: undefined, // Use default voice
-        onStart: () => {
-          console.log('Speech started');
-        },
-        onDone: () => {
-          console.log('Speech finished');
-          setIsSpeaking(false);
-        },
-        onStopped: () => {
-          console.log('Speech stopped');
-          setIsSpeaking(false);
-        },
-        onError: (error: any) => {
-          console.error('Speech error:', error);
-          setIsSpeaking(false);
+      const { sound: playbackObject } = await Audio.Sound.createAsync(
+        { uri: lastRecordingUri },
+        { shouldPlay: true }
+      );
+      sound.current = playbackObject;
+
+      playbackObject.setOnPlaybackStatusUpdate((status) => {
+        if ("isLoaded" in status && status.isLoaded && (status as any).didJustFinish) {
+          playbackObject.unloadAsync();
         }
-      };
-      
-      // Speak the AI response
-      await Speech.speak(lastFeedback.response, speechOptions);
-      
-    } catch (error) {
-      console.error('Text-to-speech error:', error);
-      setIsSpeaking(false);
-      Alert.alert('Error', 'Failed to play response. Please try again.');
+      });
+    } catch (err) {
+      console.error("Error playing user audio:", err);
     }
   };
 
   const getRecordingButtonText = () => {
-    if (isTranscribing) return "Transcribing...";
+    if (isTranscribing) return "Thinking...";
     if (isRecording) return "Recording...";
     return "Tap to speak";
   };
 
-  // Get current level progress for display
   const levelProgress = getLevelProgress();
 
   return (
-    <SafeAreaView className="flex-1 bg-[#f0f8ff]">
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#f0f8ff' }}>
       <StatusBar style="dark" />
 
-      {/* Header with Progress */}
-      <View className="flex-row items-center justify-between px-4 py-2">
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8 }}>
         <TouchableOpacity
           onPress={handleBackPress}
-          className="p-2 rounded-full bg-white shadow-sm"
+          style={{
+            padding: 8,
+            borderRadius: 9999,
+            backgroundColor: 'white',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.1,
+            shadowRadius: 2,
+          }}
         >
           <ArrowLeft size={24} color="#000080" />
         </TouchableOpacity>
-        <View className="flex-1 mx-4">
-          <Text className="text-lg font-bold text-[#000080] text-center">
+
+        <View style={{ flex: 1, marginHorizontal: 16 }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#000080', textAlign: 'center' }}>
             Practice Speaking
           </Text>
-          <View className="flex-row items-center justify-center mt-1">
-            <Text className="text-sm text-gray-600 mr-2">
-              Level {levelProgress.currentLevel}
-            </Text>
-            <View className="flex-1 bg-gray-200 h-2 rounded-full max-w-[100px]">
-              <View 
-                className="bg-[#FFD700] h-2 rounded-full" 
-                style={{ width: `${levelProgress.progress}%` }}
-              />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 4 }}>
+            <Text style={{ fontSize: 12, color: '#555', marginRight: 8 }}>Level {levelProgress.currentLevel}</Text>
+            <View style={{ flex: 1, height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, maxWidth: 100 }}>
+              <View style={{ width: `${levelProgress.progress}%`, height: 8, backgroundColor: '#FFD700', borderRadius: 4 }} />
             </View>
-            <Text className="text-xs text-gray-500 ml-2">
-              {levelProgress.progress}%
-            </Text>
+            <Text style={{ fontSize: 10, color: '#777', marginLeft: 8 }}>{levelProgress.progress}%</Text>
           </View>
         </View>
-        <View className="w-10" />
+
+        <View style={{ width: 40 }} />
       </View>
 
-      {/* Session Progress Indicator */}
+      {/* Session Indicator */}
       {sessionSpeakingTime > 0 && (
-        <View className="mx-4 mb-2 p-2 bg-green-100 rounded-xl border border-green-200">
-          <Text className="text-sm text-green-800 text-center">
+        <View style={{ marginHorizontal: 16, marginBottom: 8, padding: 8, backgroundColor: '#d1fae5', borderRadius: 12, borderWidth: 1, borderColor: '#a7f3d0' }}>
+          <Text style={{ fontSize: 12, color: '#065f46', textAlign: 'center' }}>
             🎯 Session: {Math.floor(sessionSpeakingTime / 60)}m {Math.floor(sessionSpeakingTime % 60)}s spoken
           </Text>
         </View>
       )}
 
-      {/* AI Avatar/Orb */}
-      <View className="items-center justify-center mt-4">
-        <View className={`w-32 h-32 rounded-full bg-[#000080] items-center justify-center shadow-lg ${isSpeaking ? 'animate-pulse' : ''}`}>
+      {/* AI Avatar */}
+      <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 16 }}>
+        <View style={{
+          width: 128,
+          height: 128,
+          borderRadius: 64,
+          backgroundColor: '#000080',
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.05,
+          shadowRadius: 2,
+          opacity: isSpeaking ? 0.7 : 1,
+        }}>
           <Image
-            source="https://api.dicebear.com/7.x/avataaars/svg?seed=kitty"
-            style={{ width: 80, height: 80 }}
+            source={avatar}
+            style={{ width: 115, height: 115 }}
             contentFit="contain"
           />
         </View>
-        <Text className="mt-2 text-sm text-gray-600">
-          {isSpeaking ? "Speaking..." : "Your language buddy"}
+        <Text style={{ marginTop: 8, fontSize: 12, color: '#555' }}>
+          {isRecording && "Recording…"}
+          {isTranscribing && "Understanding..."}
+          {isThinking && "Thinking…"}
+          {isTTSLoading && "Preparing voice…"}
+          {isSpeaking && "Speaking…"}
+          {!isRecording &&
+          !isTranscribing &&
+          !isThinking &&
+          !isTTSLoading &&
+          !isSpeaking &&
+          "Your language buddy"}
         </Text>
       </View>
 
-      {/* Current Transcription Display */}
+      {/* Transcription */}
       {(isTranscribing || currentTranscription) && (
-        <View className="mx-4 mt-4 p-3 bg-yellow-100 rounded-2xl border border-yellow-200">
-          <Text className="text-sm font-medium text-yellow-800 mb-1">
-            {isTranscribing ? "Transcribing..." : "You said:"}
+        <View style={{ marginHorizontal: 16, marginTop: 16, padding: 12, backgroundColor: '#FEF3C7', borderRadius: 16, borderWidth: 1, borderColor: '#fde68a' }}>
+          <Text style={{ fontSize: 12, fontWeight: '500', color: '#92400e', marginBottom: 4 }}>
+            {isTranscribing ? "Understanding..." : "You said:"}
           </Text>
-          <Text className="text-gray-700">
+          <Text style={{ color: '#444' }}>
             {isTranscribing ? "Processing your speech..." : currentTranscription}
           </Text>
         </View>
       )}
 
-      {/* Conversation Area */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', marginHorizontal: 16, marginTop: 16, gap: 12 }}>
+        <TouchableOpacity
+          onPress={() => setConversationMode('practice')}
+          style={{
+            flex: 1,
+            paddingVertical: 8,
+            backgroundColor: conversationMode === 'practice' ? '#000080' : '#e2e8f0',
+            borderRadius: 12,
+            alignItems: 'center'
+          }}
+        >
+          <Text style={{ color: conversationMode === 'practice' ? 'white' : '#000080', fontWeight: '600' }}>
+            Practice English
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setConversationMode('chat')}
+          style={{
+            flex: 1,
+            paddingVertical: 8,
+            backgroundColor: conversationMode === 'chat' ? '#000080' : '#e2e8f0',
+            borderRadius: 12,
+            alignItems: 'center'
+          }}
+        >
+          <Text style={{ color: conversationMode === 'chat' ? 'white' : '#000080', fontWeight: '600' }}>
+            Chat Normally
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Conversation */}
       <ScrollView
+        ref={scrollViewRef}  // <-- add this line
         className="flex-1 px-4 py-4 mt-2 bg-white mx-4 rounded-2xl shadow-sm"
         contentContainerStyle={{ paddingBottom: 20 }}
       >
+
         {conversation.map((message) => (
           <View
             key={message.id}
-            className={`mb-4 max-w-[80%] ${message.isUser ? "self-end ml-auto" : "self-start"}`}
+            style={{
+              marginBottom: 16,
+              maxWidth: '80%',
+              alignSelf: message.isUser ? 'flex-end' : 'flex-start',
+            }}
           >
-            <View
-              className={`p-3 rounded-2xl ${message.isUser ? "bg-[#FFD700]" : "bg-[#ADD8E6]"}`}
-            >
-              <Text className="text-[#000080]">{message.text}</Text>
+            <View style={{
+              padding: 12,
+              borderRadius: 16,
+              backgroundColor: message.isUser ? '#FFD700' : '#ADD8E6'
+            }}>
+              <Text style={{ color: '#000080' }}>{message.text}</Text>
             </View>
-            <Text className="text-xs text-gray-500 mt-1 px-1">
+            <Text style={{ fontSize: 10, color: '#555', marginTop: 4 }}>
               {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           </View>
@@ -403,82 +484,48 @@ export default function ConversationScreen() {
       </ScrollView>
 
       {/* Recording Button */}
-      <View className="items-center justify-center my-4">
+      <View style={{ alignItems: 'center', justifyContent: 'center', marginVertical: 16 }}>
         <Pressable
           onPress={toggleRecording}
           disabled={isTranscribing}
-          className={`w-16 h-16 rounded-full items-center justify-center shadow-lg ${
-            isRecording 
-              ? "bg-red-500" 
-              : isTranscribing 
-                ? "bg-gray-400" 
-                : "bg-[#000080]"
-          }`}
+          style={{
+            width: 64,
+            height: 64,
+            borderRadius: 32,
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 2,
+            backgroundColor: isRecording ? '#ef4444' : isTranscribing ? '#9ca3af' : '#000080'
+          }}
         >
-          {isRecording ? (
-            <Square size={32} color="white" />
-          ) : (
-            <Mic size={32} color="white" />
-          )}
+          {isRecording ? <Square size={32} color="white" /> : <Mic size={32} color="white" />}
         </Pressable>
-        <Text className="mt-2 text-sm text-gray-600">
-          {getRecordingButtonText()}
-        </Text>
+        <Text style={{ marginTop: 8, fontSize: 12, color: '#555' }}>{getRecordingButtonText()}</Text>
       </View>
 
-      {/* Feedback Area */}
-      {hasResponse && lastFeedback && (
-        <View className="bg-[#f0f8ff] mx-4 p-4 rounded-2xl mb-4 border border-[#ADD8E6]">
-          <View className="flex-row items-center justify-between mb-2">
-            <View className="flex-row items-center">
-              <Sparkles size={16} color="#FFD700" />
-              <Text className="ml-2 font-bold text-[#000080]">Feedback</Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => {
-                setHasResponse(false);
-                setLastFeedback(null);
-                if (isSpeaking) {
-                  Speech.stop();
-                  setIsSpeaking(false);
-                }
-              }}
-              className="p-1 rounded-full bg-gray-200"
-            >
-              <X size={16} color="#666" />
-            </TouchableOpacity>
-          </View>
-          <Text className="text-gray-700 mb-2">
-            {lastFeedback.feedback}
-          </Text>
-          
-          {lastFeedback.improvements && lastFeedback.improvements.length > 0 && (
-            <View className="mb-3">
-              <Text className="text-sm font-medium text-[#000080] mb-1">
-                Improvement tips:
-              </Text>
-              {lastFeedback.improvements.map((tip, index) => (
-                <Text key={index} className="text-sm text-gray-600 ml-2">
-                  • {tip}
-                </Text>
-              ))}
-            </View>
-          )}
+      {/* Playback Controls */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16, gap: 16 }}>
+        <TouchableOpacity
+          onPress={playUserRecording}
+          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#000080', borderRadius: 9999 }}
+        >
+          <Play size={16} color="white" />
+          <Text style={{ color: 'white', marginLeft: 8 }}>Play Your Speech</Text>
+        </TouchableOpacity>
 
-          {/* Play Response Button */}
-          <TouchableOpacity
-            onPress={playResponse}
-            className={`flex-row items-center mt-3 self-start px-4 py-2 rounded-full ${
-              isSpeaking ? "bg-red-500" : "bg-[#000080]"
-            }`}
-          >
-            <Play size={16} color="white" />
-            <Text className="ml-2 text-white">
-              {isSpeaking ? "Stop" : "Play Response"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        <TouchableOpacity
+          onPress={async () =>{
+            await stopAndUnloadSound();
+            setIsSpeaking(false);
+          }}
+          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#ef4444', borderRadius: 9999 }}
+        >
+          <Text style={{ color: 'white', marginLeft: 8 }}>Stop AI Speech</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }

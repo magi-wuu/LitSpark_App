@@ -4,8 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Define the shape of our user profile data
 interface UserProfile {
   name: string;
-  email: string;
-  profilePicture: string;
   joinDate: string;
   bio: string;
 }
@@ -20,8 +18,6 @@ interface UserProfileContextType {
 // Default profile data for new users
 const defaultProfile: UserProfile = {
   name: "New Learner",
-  email: "learner@example.com", 
-  profilePicture: "https://api.dicebear.com/7.x/avataaars/svg?seed=default",
   joinDate: new Date().toISOString(),
   bio: "Passionate language learner exploring new cultures through conversation!"
 };
