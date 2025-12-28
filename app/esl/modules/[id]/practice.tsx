@@ -6,11 +6,13 @@ import ProgressBar from '../../../components/ProgressBar';
 import QuestionCard from '../../../components/QuestionCard';
 import FeedbackPanel from '../../../components/FeedbackPanel';
 import { ArrowLeft } from 'lucide-react-native';
+import { useProgress } from "@/contexts/ProgressContext";
 
 export default function PracticeScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const module = modules.find((m) => m.id === id);
+    const { updateScore } = useProgress();
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
@@ -50,6 +52,7 @@ export default function PracticeScreen() {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       // Navigate to completion screen
+      updateScore(Math.round((correctCount / 10) * 100));
       router.replace({
         pathname: '/esl/modules/[id]/complete',
         params: {

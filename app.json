@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "test-tempo",
-    "slug": "test-tempo",
+    "name": "LitSpark",
+    "slug": "LitSpark",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,16 +10,17 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.test-tempo",
+      "bundleIdentifier": "com.LitSparkYouth.LitSpark",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "This app needs access to your microphone so you can practice speaking English with our AI tutor."
-      } 
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.LitSparkYouth.LitSpark"
     },
     "web": {
       "bundler": "metro",

@@ -7,7 +7,7 @@ import { X, Check } from 'lucide-react-native';
 interface QuizViewProps {
   story: Story;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (score: number, total: number) => void;
 }
 
 export function QuizView({ story, onClose, onComplete }: QuizViewProps) {
@@ -48,8 +48,9 @@ export function QuizView({ story, onClose, onComplete }: QuizViewProps) {
         setCurrentQuestionIndex(prev => prev + 1);
       }, 300);
     } else {
+      const finalScore = isCorrect ? correctAnswers : correctAnswers;
       setTimeout(() => {
-        onComplete();
+        onComplete(finalScore, story.questions.length);
       }, 300);
     }
   };

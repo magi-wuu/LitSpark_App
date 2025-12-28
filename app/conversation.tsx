@@ -48,6 +48,7 @@ export default function ConversationScreen() {
   const [conversationMode, setConversationMode] = useState<'practice' | 'chat'>('practice');
   const [isThinking, setIsThinking] = useState(false);
   const [isTTSLoading, setIsTTSLoading] = useState(false);
+  const [isUserRecordingPlaying, setIsUserRecordingPlaying] = useState(false);
 
 
   const recording = useRef<Audio.Recording | null>(null);
@@ -68,15 +69,17 @@ export default function ConversationScreen() {
 
   const stopAndUnloadSound = async () => {
     if (!sound.current) return;
-    if (sound.current) {
-      try {
-        await sound.current.stopAsync();
-        await sound.current.unloadAsync();
-      } catch (e) {
-        // ignore — happens if already unloaded
-      }finally {sound.current = null;}
-      }
-    };
+    try {
+      await sound.current.stopAsync();
+      await sound.current.unloadAsync();
+    } catch (e) {
+      // ignore — happens if already unloaded
+    } finally {
+      sound.current = null;
+      setIsSpeaking(false);
+      setIsUserRecordingPlaying(false); // Add this line
+    }
+  };
 
     const handleBackPress = () => {
       if (sessionSpeakingTime > 0) {
@@ -302,20 +305,38 @@ export default function ConversationScreen() {
       Alert.alert("No recording available");
       return;
     }
+
     try {
+      // If already playing, stop it
+      if (isUserRecordingPlaying && sound.current) {
+        await stopAndUnloadSound();
+        setIsUserRecordingPlaying(false);
+        return;
+      }
+
+      // Stop any AI speech first
+      if (isSpeaking) {
+        await stopAndUnloadSound();
+        setIsSpeaking(false);
+      }
+
       const { sound: playbackObject } = await Audio.Sound.createAsync(
         { uri: lastRecordingUri },
         { shouldPlay: true }
       );
       sound.current = playbackObject;
+      setIsUserRecordingPlaying(true);
 
       playbackObject.setOnPlaybackStatusUpdate((status) => {
         if ("isLoaded" in status && status.isLoaded && (status as any).didJustFinish) {
           playbackObject.unloadAsync();
+          sound.current = null;
+          setIsUserRecordingPlaying(false);
         }
       });
     } catch (err) {
       console.error("Error playing user audio:", err);
+      setIsUserRecordingPlaying(false);
     }
   };
 
@@ -376,8 +397,8 @@ export default function ConversationScreen() {
       {/* AI Avatar */}
       <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 16 }}>
         <View style={{
-          width: 128,
-          height: 128,
+          width: 100,
+          height: 100,
           borderRadius: 64,
           backgroundColor: '#000080',
           alignItems: 'center',
@@ -390,7 +411,7 @@ export default function ConversationScreen() {
         }}>
           <Image
             source={avatar}
-            style={{ width: 115, height: 115 }}
+            style={{ width: 95, height: 95 }}
             contentFit="contain"
           />
         </View>
@@ -408,18 +429,6 @@ export default function ConversationScreen() {
           "Your language buddy"}
         </Text>
       </View>
-
-      {/* Transcription */}
-      {(isTranscribing || currentTranscription) && (
-        <View style={{ marginHorizontal: 16, marginTop: 16, padding: 12, backgroundColor: '#FEF3C7', borderRadius: 16, borderWidth: 1, borderColor: '#fde68a' }}>
-          <Text style={{ fontSize: 12, fontWeight: '500', color: '#92400e', marginBottom: 4 }}>
-            {isTranscribing ? "Understanding..." : "You said:"}
-          </Text>
-          <Text style={{ color: '#444' }}>
-            {isTranscribing ? "Processing your speech..." : currentTranscription}
-          </Text>
-        </View>
-      )}
 
       <View style={{ flexDirection: 'row', justifyContent: 'center', marginHorizontal: 16, marginTop: 16, gap: 12 }}>
         <TouchableOpacity
@@ -510,20 +519,46 @@ export default function ConversationScreen() {
       <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16, gap: 16 }}>
         <TouchableOpacity
           onPress={playUserRecording}
-          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#000080', borderRadius: 9999 }}
+          style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            paddingHorizontal: 16, 
+            paddingVertical: 8, 
+            backgroundColor: isUserRecordingPlaying ? '#ef4444' : '#000080', 
+            borderRadius: 9999 
+          }}
         >
-          <Play size={16} color="white" />
-          <Text style={{ color: 'white', marginLeft: 8 }}>Play Your Speech</Text>
+          {isUserRecordingPlaying ? (
+            <>
+              <Square size={16} color="white" />
+              <Text style={{ color: 'white', marginLeft: 8 }}>Stop Your Speech</Text>
+            </>
+          ) : (
+            <>
+              <Play size={16} color="white" />
+              <Text style={{ color: 'white', marginLeft: 8 }}>Play Your Speech</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={async () =>{
+          onPress={async () => {
             await stopAndUnloadSound();
             setIsSpeaking(false);
+            setIsUserRecordingPlaying(false); // Add this line
           }}
-          style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#ef4444', borderRadius: 9999 }}
+          style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            paddingHorizontal: 16, 
+            paddingVertical: 8, 
+            backgroundColor: isSpeaking ? '#ef4444' : '#9ca3af', 
+            borderRadius: 9999 
+          }}
         >
-          <Text style={{ color: 'white', marginLeft: 8 }}>Stop AI Speech</Text>
+          <Text style={{ color: 'white', marginLeft: 8 }}>
+            {isSpeaking ? 'Stop AI Speech' : 'AI Speech'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

@@ -12,7 +12,7 @@ import { useRouter } from "expo-router";
 import { Clock, MessageCircle, Mic, Award, History, Trophy, Target } from "lucide-react-native";
 import { useProgress } from "../contexts/ProgressContext";
 import { useUserProfile } from "../contexts/UserProfileContext";
-import pfp from "../assets/images/LSLOGO.png";
+import pfp from "../assets/images/pfp.png";
 
 export default function HomePage() {
   const router = useRouter();
@@ -124,7 +124,8 @@ export default function HomePage() {
           >
             <Image
               source={pfp}
-              className="h-full w-full"
+              style={{ width: '100%', height: '100%' }}
+              contentFit="cover"
             />
           </TouchableOpacity>
         </View>
@@ -244,12 +245,12 @@ export default function HomePage() {
           <FlatList
             data={achievements}
             keyExtractor={(item) => item.id.toString()}
-            numColumns={3}               // 👈 grid columns
+            numColumns={3}               
             columnWrapperStyle={{
               justifyContent: "space-between",
               marginBottom: 12,
             }}
-            scrollEnabled={false}        // 👈 prevents nested scrolling issues
+            scrollEnabled={false}        
             renderItem={({ item }) => (
               <View
                 className={`p-4 rounded-2xl w-[30%] aspect-square items-center ${

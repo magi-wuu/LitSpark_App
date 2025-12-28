@@ -11,11 +11,13 @@ import { Story } from "./types/story";
 import { BookOpen } from "lucide-react-native";
 import { router, useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
+import { useProgress } from "../contexts/ProgressContext";
 
 
 type ViewMode = 'grid' | 'reader' | 'quiz';
 
 export default function HomeScreen() {
+  const {updateScore} = useProgress();
   const [stories, setStories] = useState(initialStories);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -40,13 +42,11 @@ export default function HomeScreen() {
     setViewMode('quiz');
   };
 
-  const handleQuizComplete = () => {
-    if (!selectedStory) return;
+  const handleQuizComplete = (score: number, total: number) => {
+  if (!selectedStory) return;
 
-    // Calculate score (simplified - in real app, track answers)
-    const score = Math.floor(Math.random() * selectedStory.questions.length) + 1;
-    setQuizScore({ score, total: selectedStory.questions.length });
-
+  setQuizScore({ score, total });
+  updateScore(Math.round((score / total) * 100));
     // Update story progress
     setStories(prev =>
       prev.map(s =>
